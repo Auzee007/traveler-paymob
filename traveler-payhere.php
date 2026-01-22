@@ -1,20 +1,18 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: Dulaj Ariyaratne
- * Date: 1/27/2021
- * Time: 8:47 AM
- */
-
 /*
-Plugin Name: Traveler PayHere
-Description: This plugin is used for Traveler Theme
-Version: 1.0
-Author: Dulaj Ariyaratne
+Plugin Name: Traveler Paymob
+Description: Use Paymob with Traveler theme bookings
+Version: 1.0.0
+Author: Abdullrahman Elzeeny
 Author URI: https://github.com/Dulajdeshan
 License: GPLv2 or later
 Text Domain: traveler-payhere
 */
+
+require 'vendor/autoload.php';
+
+use GuzzleHttp\Client;
+use GuzzleHttp\Psr7\Request;
 
 class Traveler_Payhere_Payment
 {

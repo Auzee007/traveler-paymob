@@ -16,9 +16,8 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
         private $_gateway_id = 'st_payhere';
 
         private $url;
-        private $merchant_id;
-        private $merchant_secret;
-
+        private $public_key;
+        private $secret_key;
 
         function __construct()
         {
@@ -37,11 +36,11 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
             return array(
                 array(
                     'id' => 'payhere_sandbox',
-                    'label' => __('Sandbox Mode', 'traveler-payhere'),
+                    'label' => __('Test Mode', 'traveler-payhere'),
                     'type' => 'on-off',
                     'std' => 'on',
                     'section' => 'option_pmgateway',
-                    'desc' => esc_html__( "Sandbox/Live Mode", 'traveler-payhere' ),
+                    'desc' => esc_html__( "Test/Live Mode", 'traveler-payhere' ),
                     'condition' => 'pm_gway_st_payhere_enable:is(on)'
                 ),
                 array(
@@ -54,22 +53,29 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
                     'condition' => 'pm_gway_st_payhere_enable:is(on)'
                 ),
                 array(
-                    'id' => 'payhere_merchant_id',
-                    'label' => __('Merchant ID', 'traveler-payhere'),
+                    'id' => 'paymob_public_key',
+                    'label' => __('Public Key', 'traveler-payhere'),
                     'type' => 'text',
                     'section' => 'option_pmgateway',
-                    'desc' => __('Merchant ID', 'traveler-payhere'),
+                    'desc' => __('Public Key', 'traveler-payhere'),
                     'condition' => 'pm_gway_st_payhere_enable:is(on)'
                 ),
                 array(
-                    'id' => 'payhere_merchant_secret',
-                    'label' => __('Merchant Secret', 'traveler-payhere'),
+                    'id' => 'paymob_secret_key',
+                    'label' => __('Secret Key', 'traveler-payhere'),
                     'type' => 'text',
                     'section' => 'option_pmgateway',
-                    'desc' => __('Merchant Secret', 'traveler-payhere'),
+                    'desc' => __('Secret Key', 'traveler-payhere'),
+                    'condition' => 'pm_gway_st_payhere_enable:is(on)'
+                ),
+                array(
+                    'id' => 'paymob_integration_id',
+                    'label' => __('Paymob Integration ID', 'traveler-payhere'),
+                    'type' => 'text',
+                    'section' => 'option_pmgateway',
+                    'desc' => __('Set an integration ID', 'traveler-payhere'),
                     'condition' => 'pm_gway_st_payhere_enable:is(on)'
                 )
-
 
 
             );
@@ -78,20 +84,20 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
         public function setDefaultParam()
         {
             $this->url = st()->get_option('payhere_url', '');
-            $this->merchant_id = st()->get_option('payhere_merchant_id', '');
-            $this->merchant_secret = st()->get_option('payhere_merchant_secret', '');
+            $this->public_key = st()->get_option('paymob_public_key', '');
+            $this->secret_key = st()->get_option('paymob_secret_key', '');
             $this->development = st()->get_option('payhere_development', 'on');
             $this->sandbox = st()->get_option('payhere_sandbox', 'on');
 
 
             if ('on' == $this->sandbox) {
 
-                $this->checkout_url = 'https://sandbox.payhere.lk/pay/checkout';
+                $this->checkout_url = 'https://accept.paymob.com/unifiedcheckout';
                 $this->authorization_url = 'https://sandbox.payhere.lk/merchant/v1/oauth/token';
 
             } else {
 
-                $this->checkout_url = 'https://www.payhere.lk/pay/checkout';
+                $this->checkout_url = 'https://accept.paymob.com/unifiedcheckout';
                 $this->authorization_url = 'https://www.payhere.lk/merchant/v1/oauth/token';
 
             }
@@ -107,18 +113,17 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
         {
             if (TravelHelper::get_current_currency('name') == 'USD') {
                 return true;
-            }else if(TravelHelper::get_current_currency('name') == 'LKR') {
+            }else if(TravelHelper::get_current_currency('name') == 'EGP') {
                 return true;
             }
 
-            STTemplate::set_message(__('This payment only supports LKR & USD currency', 'traveler-payhere'));
+            STTemplate::set_message(__('This payment only supports EGP & USD currency', 'traveler-payhere'));
         }
 
         function do_checkout($order_id)
         {
             $payment = STInput::post('st_payment_gateway');
-
-
+    
 
             $this->setDefaultParam();
 
@@ -172,7 +177,7 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
 
 
             $params = array(
-                'merchant_id' => $this->merchant_id,
+                'public_key' => $this->public_key,
                 'return_url' => $this->get_return_url($new_order, true),
                 'cancel_url' => $this->get_cancel_url($new_order),
                 'notify_url' => $this->get_return_url($new_order, true),
@@ -192,7 +197,7 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
 
 
 
-            $the_string = $this->merchant_id . $new_order . $amount . $currency . strtoupper(md5($this->merchant_secret));
+            $the_string = $this->public_key . $new_order . $amount . $currency . strtoupper(md5($this->merchant_secret));
 
              $params['hash'] = $this->generate_sha1_signature($the_string);
 
@@ -250,7 +255,7 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
             }else {
                 $merchant_secret = $this->merchant_secret;
 
-                $merchant_id = $_REQUEST['merchant_id'];
+                $public_key = $_REQUEST['public_key'];
                 $order_id = $_REQUEST['order_id'];
                 $payhere_amount = $_REQUEST['payhere_amount'];
                 $payhere_currency = $_REQUEST['payhere_currency'];
@@ -258,7 +263,7 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
                 $md5sig = $_REQUEST['md5sig'];
 
 
-                $local_md5sig = strtoupper (md5 ( $merchant_id . $order_id . $payhere_amount . $payhere_currency . $status_code . strtoupper(md5($merchant_secret)) ) );
+                $local_md5sig = strtoupper (md5 ( $public_key . $order_id . $payhere_amount . $payhere_currency . $status_code . strtoupper(md5($merchant_secret)) ) );
 
                 if (($local_md5sig === $md5sig) AND ($status_code == 2) ){
                         return true;
@@ -342,7 +347,7 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
 
         function get_name()
         {
-            return __('Payhere', 'traveler-payhere');
+            return __('Paymob', 'traveler-payhere');
         }
 
         function get_default_status()
@@ -355,7 +360,7 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
             if (st()->get_option('pm_gway_st_payhere_enable') == 'off') {
                 return false;
             } else {
-                if (!st()->get_option('payhere_merchant_id')) {
+                if (!st()->get_option('paymob_public_key')) {
                     return false;
                 }
             }
