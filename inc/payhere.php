@@ -6,6 +6,8 @@
  * Time: 3:19 PM
  */
 
+use GuzzleHttp\Client;
+use GuzzleHttp\Psr7\Request;
 
 if (!class_exists('ST_Payhere_Payment_Gateway')) {
     class ST_Payhere_Payment_Gateway extends STAbstactPaymentGateway
@@ -16,9 +18,13 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
         private $_gateway_id = 'st_payhere';
 
         private $url;
+        private $api;
         private $public_key;
         private $secret_key;
-
+        private $sandbox;
+        private $integration_id;
+        private $redirect_url;
+        
         function __construct()
         {
             add_filter('st_payment_gateway_st_payhere_name', array($this, 'get_name'));
@@ -28,13 +34,15 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
             } catch (Exception $e) {
                 $this->default_status = false;
             }
+
+            wp_enqueue_script('traveler-payhere-general-js', Traveler_Payhere_Payment::get_inst()->pluginUrl . 'assets/js/general.js', [], time(), true);
         }
 
 
         function get_option_fields()
         {
-            return array(
-                array(
+            return [
+                [
                     'id' => 'payhere_sandbox',
                     'label' => __('Test Mode', 'traveler-payhere'),
                     'type' => 'on-off',
@@ -42,8 +50,8 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
                     'section' => 'option_pmgateway',
                     'desc' => esc_html__( "Test/Live Mode", 'traveler-payhere' ),
                     'condition' => 'pm_gway_st_payhere_enable:is(on)'
-                ),
-                array(
+                ],
+                [
                     'id' => 'payhere_development',
                     'label' => __('Development Mode', 'traveler-payhere'),
                     'type' => 'on-off',
@@ -51,34 +59,48 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
                     'section' => 'option_pmgateway',
                     'desc' => esc_html__( "Website Development(localhost)/Production Mode", 'traveler-payhere' ),
                     'condition' => 'pm_gway_st_payhere_enable:is(on)'
-                ),
-                array(
+                ],
+                [
+                    'id' => 'paymob_api_key',
+                    'label' => __('API Key', 'traveler-payhere'),
+                    'type' => 'text',
+                    'section' => 'option_pmgateway',
+                    'desc' => __('API Key (optional)', 'traveler-payhere'),
+                    'condition' => 'pm_gway_st_payhere_enable:is(on)'
+                ],
+                [
                     'id' => 'paymob_public_key',
                     'label' => __('Public Key', 'traveler-payhere'),
                     'type' => 'text',
                     'section' => 'option_pmgateway',
                     'desc' => __('Public Key', 'traveler-payhere'),
                     'condition' => 'pm_gway_st_payhere_enable:is(on)'
-                ),
-                array(
+                ],
+                [
                     'id' => 'paymob_secret_key',
                     'label' => __('Secret Key', 'traveler-payhere'),
                     'type' => 'text',
                     'section' => 'option_pmgateway',
                     'desc' => __('Secret Key', 'traveler-payhere'),
                     'condition' => 'pm_gway_st_payhere_enable:is(on)'
-                ),
-                array(
+                ],
+                [
                     'id' => 'paymob_integration_id',
                     'label' => __('Paymob Integration ID', 'traveler-payhere'),
                     'type' => 'text',
                     'section' => 'option_pmgateway',
                     'desc' => __('Set an integration ID', 'traveler-payhere'),
                     'condition' => 'pm_gway_st_payhere_enable:is(on)'
-                )
-
-
-            );
+                ],
+                [
+                    'id' => 'paymob_redirect_url',
+                    'label' => __('Redirect URL', 'traveler-payhere'),
+                    'type' => 'text',
+                    'section' => 'option_pmgateway',
+                    'desc' => __('Set the redirect URL to trigger after the payment is completed... Tip: You can add a URL of a page you make for displaying payment success messages', 'traveler-payhere'),
+                    'condition' => 'pm_gway_st_payhere_enable:is(on)'
+                ]
+            ];
         }
 
         public function setDefaultParam()
@@ -88,17 +110,20 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
             $this->secret_key = st()->get_option('paymob_secret_key', '');
             $this->development = st()->get_option('payhere_development', 'on');
             $this->sandbox = st()->get_option('payhere_sandbox', 'on');
+            $this->integration_id = st()->get_option('paymob_integration_id', '');
+            $this->redirect_url = st()->get_option('paymob_redirect_url', '');
+            $this->api_key = st()->get_option('paymob_api_key', '');
 
 
             if ('on' == $this->sandbox) {
 
                 $this->checkout_url = 'https://accept.paymob.com/unifiedcheckout';
-                $this->authorization_url = 'https://sandbox.payhere.lk/merchant/v1/oauth/token';
+                $this->authorization_url = 'https://accept.paymob.com/v1/intention/';
 
             } else {
 
                 $this->checkout_url = 'https://accept.paymob.com/unifiedcheckout';
-                $this->authorization_url = 'https://www.payhere.lk/merchant/v1/oauth/token';
+                $this->authorization_url = 'https://accept.paymob.com/v1/intention/';
 
             }
 
@@ -122,30 +147,80 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
 
         function do_checkout($order_id)
         {
+            do_action('st_before_do_checkout', $order_id, 'st_payhere');
+
             $payment = STInput::post('st_payment_gateway');
-    
-
+            
             $this->setDefaultParam();
-
-
             $params = $this->get_purchase_data($order_id);
-
-
+            $unique_reference = random_bytes(16);
+            # Create the intention of the payment and get the client secret from Paymob API
+            $client = new Client();
+            $headers = [
+                'Authorization' => 'Token ' . $this->secret_key,
+                'Content-Type' => 'application/json'
+            ];
+            error_log("Amount: " . (int)($params['amount'] * 100));
+            $body = '{
+                "amount": ' . (int)($params['amount'] * 100) . ',
+                "currency": "EGP",
+                "payment_methods": [
+                    '. $this->integration_id .'
+                ],
+                "items": [
+                    {
+                        "name": "' . $params['item_name'] . '",
+                        "amount": ' . (int)($params['amount'] * 100) . ',
+                        "description": "' . $params['item_description'] . '",
+                        "quantity": 1
+                    }
+                ],
+                "billing_data": {
+                    "apartment": "not supported",
+                    "first_name": "' . $params['first_name'] . '",
+                    "last_name": "' . $params['last_name'] . '",
+                    "street": "not supported",
+                    "building": "not supported",
+                    "phone_number": "'. $params['phone'] .'",
+                    "city": "' . $params['city'] . '",
+                    "country": "' . $params['country'] . '",
+                    "email": "'. $params['email'] .'",
+                    "floor": "not supported",
+                    "state": "not supported"
+                },
+                "extras": {
+                    "ee": 22
+                },
+                "special_reference": "' . bin2hex($unique_reference) . '",
+                "expiration": 3600,
+                "notification_url": "not supported",
+                "redirection_url": "' . $this->redirect_url . '"
+            }';
+            error_log("Integration ID: " . $this->integration_id);
+            $request = new Request('POST', $this->authorization_url, $headers, $body);
+            $response = $client->sendAsync($request)->wait();
+            $data = json_decode($response->getBody(), true);
+            $params_count = count($params);
             $payhere_form_array = array();
-
+            $i = 0;
             foreach ($params as $key => $value) {
-
-                $payhere_form_array[] = '<input type="hidden" name="' . esc_attr($key) . '" value="' . esc_attr($value) . '" />';
-
+                $payhere_form_array[] = '<input type="hidden" name="' . ($key == 'public_key') ? 'publicKey' : esc_attr($key) . '" value="' . esc_attr($value) . '" />';
+                $i++;
+                if ($i == $params_count) {
+                    $payhere_form_array[] = '<input type="hidden" name="clientSecret" value="' . $data['client_secret'] . '" />';
+                    $payhere_form_array[] = '<input type="hidden" name="publicKey" value="' . $this->public_key . '" />';
+                }
             }
+
+
 
             $form = sprintf('<h4>Redirecting....</h4>
 
-             <form action="%s" method="post" id="st_form_payhere_submit">%s</form>
+            <form action="%s" method="get" id="st_form_payhere_submit">%s</form>
 
     						<script>document.getElementById(\'st_form_payhere_submit\').submit();</script>', $this->checkout_url, implode('', $payhere_form_array));
 
-             return [
+            return [
 
                 'status' => true,
 
@@ -156,8 +231,8 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
         }
 
         private function get_purchase_data($new_order)
-
         {
+            global $wpdb;
             $total = get_post_meta($new_order, 'total_price', true);
 
             $total = round((float)$total, 2);
@@ -174,7 +249,10 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
             $email_address = get_post_meta($new_order, 'st_email', true);
             $phone = get_post_meta($new_order, 'st_phone', true);
             $currency = TravelHelper::get_current_currency('name');
-
+            error_log("Currency: $currency");
+            $post = get_post($new_order, ARRAY_A);
+            $title = $post['post_title'];
+            $content = $post['post_content'];
 
             $params = array(
                 'public_key' => $this->public_key,
@@ -191,15 +269,16 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
                 'order_id' => $new_order,
                 'items' => get_the_title($service_id),
                 'currency' => $currency,
-                'amount' => $amount
-
+                'amount' => $amount,
+                'item_name' => $title,
+                'item_description' => $content
             );
 
 
 
-            $the_string = $this->public_key . $new_order . $amount . $currency . strtoupper(md5($this->merchant_secret));
+            $the_string = $this->public_key . $new_order . $amount . $currency . strtoupper(md5($this->secret_key));
 
-             $params['hash'] = $this->generate_sha1_signature($the_string);
+            $params['hash'] = $this->generate_sha1_signature($the_string);
 
             return $params;
 
@@ -283,6 +362,9 @@ if (!class_exists('ST_Payhere_Payment_Gateway')) {
                 $this->setDefaultParam();
 
                 if ($this->validate_response($_GET['orderId'])) {
+
+                    # Request intent creation Paymob API
+                    
 
                     update_post_meta($_GET['orderID'], 'status', 'complete');
 

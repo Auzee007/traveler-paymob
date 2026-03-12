@@ -1,0 +1,80 @@
+.notice, .update-nag, .notice-alt {
+    display: none !important;
+}
+
+.traveler-paymob-admin {
+    background: #fff;
+    padding: 20px;
+    min-height: 100vh;
+    margin-left: -20px;
+}
+
+.traveler-paymob-admin > .navbar {
+    background: #fff;
+    border-bottom: 1px solid #e5e5e5;
+    margin-bottom: 50px;
+    padding: 10px;
+    border-radius: 15px;
+    border: 1px solid #234CDD;
+}
+
+.traveler-paymob-admin > .navbar .navbar-brand img[alt="Traveler"] {
+    height: 40px;
+}
+
+.traveler-paymob-admin .content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 60vh;
+}
+
+.traveler-paymob-admin button {
+    scale: 1.5;
+    border-radius: 20px;
+    width: 30% !important;
+    background-color: #234CDD !important;
+    transition: all 0.11s linear;
+}
+
+.traveler-paymob-admin button:hover {
+    background-color: #1C10C5 !important;
+}
+
+.traveler-paymob-admin button:active {
+    background-color: #1C10C5 !important;
+    scale: 1.4;
+}
+
+.navbar .navbar-nav .nav-item img[alt="Pixeleator Studio"] {
+    width: 40px;
+}
+
+.navbar .navbar-nav.mx-auto {
+    width: 65%;
+}
+
+.navbar .navbar-nav.me-auto span {
+    position: relative;
+}
+
+.navbar .navbar-nav.me-auto span small {
+    position: absolute;
+    top: -1.3rem;
+    left: 2.8rem;
+}
+
+.navbar .navbar-nav.me-auto span img {
+    margin-right: 5px;
+}
+
+#wp-footer #footer-left #footer-thankyou {
+    display: none !important;
+}
+
+.navbar .container-fluid {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
